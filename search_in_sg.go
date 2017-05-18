@@ -4,9 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"text/tabwriter"
-	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -15,19 +15,18 @@ import (
 )
 
 type secGroup struct {
-	ID           string
-	Name         string
-	Description  string
-	Permissions  []*ec2.IpPermission
+	ID          string
+	Name        string
+	Description string
+	Permissions []*ec2.IpPermission
 }
 
 type connParams struct {
-	Region   string
-	Config   string
-	Section  string
-	Egress   bool
+	Region  string
+	Config  string
+	Section string
+	Egress  bool
 }
-
 
 var (
 	configPtr  = flag.String("config", "", "Allow changing path to the file with AWS credentials")
@@ -39,15 +38,15 @@ var (
 
 func getSecurityGroups(connParams connParams) []secGroup {
 	var sgList []secGroup
-	creds  := credentials.NewSharedCredentials(connParams.Config, connParams.Section)
+	creds := credentials.NewSharedCredentials(connParams.Config, connParams.Section)
 	_, err := creds.Get()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	svc := ec2.New(session.New(), &aws.Config{
-		Region:       aws.String(*regionPtr),
-		Credentials:  creds,
+		Region:      aws.String(*regionPtr),
+		Credentials: creds,
 	})
 
 	sgIn := &ec2.DescribeSecurityGroupsInput{}
@@ -56,9 +55,9 @@ func getSecurityGroups(connParams connParams) []secGroup {
 		log.Fatal("Error: ", err)
 	}
 
-    for _, sgs := range securityGroupsResult.SecurityGroups {
+	for _, sgs := range securityGroupsResult.SecurityGroups {
 		var perm []*ec2.IpPermission
-		id   := *sgs.GroupId
+		id := *sgs.GroupId
 		name := *sgs.GroupName
 		desc := *sgs.Description
 		if connParams.Egress {
@@ -66,11 +65,11 @@ func getSecurityGroups(connParams connParams) []secGroup {
 		} else {
 			perm = sgs.IpPermissions
 		}
-		sg := secGroup {
-			ID:           id,
-			Name:         name,
-			Description:  desc,
-			Permissions:  perm,
+		sg := secGroup{
+			ID:          id,
+			Name:        name,
+			Description: desc,
+			Permissions: perm,
 		}
 		sgList = append(sgList, sg)
 	}
@@ -84,10 +83,10 @@ func main() {
 		log.Fatal("No search pattern specified")
 	}
 	connParams := connParams{
-		Region:   *regionPtr,
-		Config:   *configPtr,
-		Section:  *sectionPtr,
-		Egress:   *egressPtr,
+		Region:  *regionPtr,
+		Config:  *configPtr,
+		Section: *sectionPtr,
+		Egress:  *egressPtr,
 	}
 	sgList := getSecurityGroups(connParams)
 	write := new(tabwriter.Writer)
@@ -100,8 +99,7 @@ func main() {
 				fmt.Fprintln(write, sgs.ID, "\t|\t", sgs.Name, "\t|\t", sgs.Description, "\t")
 				break
 			}
-	    }
+		}
 	}
 	write.Flush()
 }
-
