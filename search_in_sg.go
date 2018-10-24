@@ -32,7 +32,7 @@ var (
 	configPtr  = flag.String("config", "", "Allow changing path to the file with AWS credentials")
 	sectionPtr = flag.String("section", "default", "Which part of AWS credentials to use")
 	regionPtr  = flag.String("region", "us-east-1", "Defines region")
-	patternPtr = flag.String("pattern", "", "Specify pattern to find")
+	ingressPtr = flag.String("ingress", "", "Specify ingress to find")
 	egressPtr  = flag.Bool("egress", false, "Search Egress rules. Search in Ingress by default")
 )
 
@@ -78,9 +78,9 @@ func getSecurityGroups(connParams connParams) []secGroup {
 
 func main() {
 	flag.Parse()
-	var match = regexp.MustCompile(*patternPtr)
-	if *patternPtr == "" {
-		log.Fatal("No search pattern specified")
+	var match = regexp.MustCompile(*ingressPtr)
+	if *ingressPtr == "" {
+		log.Fatal("No search ingress specified")
 	}
 	connParams := connParams{
 		Region:  *regionPtr,

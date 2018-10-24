@@ -6,12 +6,12 @@ This script is designed to simply output a list of security groups, which contai
 It could be an IP or another security group ID. Script only do string search in IpPermissions.
 
 ## Installation
-Script is written in Go 1.6. No special dependencies needed. You can simply get this script and compile it locally
+I use [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependencies. Hence, to build this, you need to have Go >= 1.11
 
 ## Usage
 
 * ```-config```  Allow changing path to the file with AWS credentials
 * ```-region```  Defines region (default "us-east-1")
 * ```-section``` Which section of AWS credentials to use (default "default")
-* ```-pattern``` Set what are you looking for. Could be regexp
+* ```-ingress``` Set what are you looking for in ingress rules. Could be regexp
 * ```-egress```  Search in egress rules
