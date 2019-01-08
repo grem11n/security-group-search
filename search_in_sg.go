@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -28,12 +29,22 @@ type connParams struct {
 	Egress  bool
 }
 
+type sgInfo struct {
+	ID          string `json:"groupId"`
+	Name        string `json:"groupName"`
+	Rule        string `json:"rule"`
+	Description string `json:"Description"`
+}
+
+type output []sgInfo
+
 var (
 	configPtr  = flag.String("config", "", "Allow changing path to the file with AWS credentials")
 	sectionPtr = flag.String("section", "default", "Which part of AWS credentials to use")
 	regionPtr  = flag.String("region", "us-east-1", "Defines region")
 	ingressPtr = flag.String("ingress", "", "Specify ingress to find")
 	egressPtr  = flag.Bool("egress", false, "Search Egress rules. Search in Ingress by default")
+	outputPtr  = flag.String("output", "table", "Set output format")
 )
 
 func getSecurityGroups(connParams connParams) []secGroup {
@@ -76,9 +87,60 @@ func getSecurityGroups(connParams connParams) []secGroup {
 	return sgList
 }
 
+func compileOutput(sgList []secGroup) {
+	var match = regexp.MustCompile(*ingressPtr)
+	var re = regexp.MustCompile(`\r?\n|\t+|\s+`)
+	if *outputPtr == "table" {
+		write := new(tabwriter.Writer)
+		write.Init(os.Stdout, 0, 8, 0, '\t', 0)
+		fmt.Fprintln(write, "   GroupId\t|\t     Name\t|\t       Rule\t|\t       Description\t")
+
+		for _, sgs := range sgList {
+			for _, perms := range sgs.Permissions {
+				if match.MatchString(perms.GoString()) {
+					rules := re.ReplaceAllString(perms.GoString(), " ")
+					fmt.Fprintln(write, sgs.ID, "\t|\t", sgs.Name, "\t|\t", rules, "\t|\t", sgs.Description, "\t")
+					break
+				}
+			}
+		}
+		write.Flush()
+	} else if *outputPtr == "json" {
+		var out output
+		for _, sgs := range sgList {
+			for _, perms := range sgs.Permissions {
+				if match.MatchString(perms.GoString()) {
+					rules := re.ReplaceAllString(perms.GoString(), " ")
+					info := sgInfo{sgs.ID, sgs.Name, rules, sgs.Description}
+					out = append(out, info)
+					break
+				}
+			}
+		}
+		jsonOut, err := json.Marshal(out)
+		if err != nil {
+			log.Fatal("Unable to create JSON output.")
+		}
+		fmt.Println(string(jsonOut))
+	} else if *outputPtr == "text" {
+		for _, sgs := range sgList {
+			for _, perms := range sgs.Permissions {
+				if match.MatchString(perms.GoString()) {
+					rules := re.ReplaceAllString(perms.GoString(), " ")
+					fmt.Println("   GroupId\t|\t     Name\t|\t       Rule\t|\t       Description\t")
+					fmt.Println(sgs.ID, sgs.Name, rules, sgs.Description)
+					break
+				}
+			}
+		}
+
+	} else {
+		log.Fatal("Only table, json, and text outputs are supported for now.")
+	}
+}
+
 func main() {
 	flag.Parse()
-	var match = regexp.MustCompile(*ingressPtr)
 	if *ingressPtr == "" {
 		log.Fatal("No search ingress specified")
 	}
@@ -89,17 +151,5 @@ func main() {
 		Egress:  *egressPtr,
 	}
 	sgList := getSecurityGroups(connParams)
-	write := new(tabwriter.Writer)
-	write.Init(os.Stdout, 0, 8, 0, '\t', 0)
-	fmt.Fprintln(write, "   GroupId\t|\t     Name\t|\t       Description\t")
-
-	for _, sgs := range sgList {
-		for _, perms := range sgs.Permissions {
-			if match.MatchString(perms.GoString()) {
-				fmt.Fprintln(write, sgs.ID, "\t|\t", sgs.Name, "\t|\t", sgs.Description, "\t")
-				break
-			}
-		}
-	}
-	write.Flush()
+	compileOutput(sgList)
 }
