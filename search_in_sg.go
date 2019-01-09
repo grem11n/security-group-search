@@ -7,12 +7,13 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/olekukonko/tablewriter"
 )
 
 type secGroup struct {
@@ -28,15 +29,6 @@ type connParams struct {
 	Section string
 	Egress  bool
 }
-
-type sgInfo struct {
-	ID          string `json:"groupId"`
-	Name        string `json:"groupName"`
-	Rule        string `json:"rule"`
-	Description string `json:"Description"`
-}
-
-type output []sgInfo
 
 var (
 	configPtr  = flag.String("config", "", "Allow changing path to the file with AWS credentials")
@@ -87,56 +79,57 @@ func getSecurityGroups(connParams connParams) []secGroup {
 	return sgList
 }
 
-func compileOutput(sgList []secGroup) {
+func searchSg(sgList []secGroup) [][]string {
 	var match = regexp.MustCompile(*ingressPtr)
 	var re = regexp.MustCompile(`\r?\n|\t+|\s+`)
-	if *outputPtr == "table" {
-		write := new(tabwriter.Writer)
-		write.Init(os.Stdout, 0, 8, 0, '\t', 0)
-		fmt.Fprintln(write, "   GroupId\t|\t     Name\t|\t       Rule\t|\t       Description\t")
+	var out [][]string
+	for _, sgs := range sgList {
+		for _, perms := range sgs.Permissions {
+			if match.MatchString(perms.GoString()) {
+				rules := re.ReplaceAllString(perms.GoString(), " ")
+				info := []string{sgs.ID, sgs.Name, rules, sgs.Description}
+				out = append(out, info)
+				break
+			}
+		}
+	}
+	return out
+}
 
-		for _, sgs := range sgList {
-			for _, perms := range sgs.Permissions {
-				if match.MatchString(perms.GoString()) {
-					rules := re.ReplaceAllString(perms.GoString(), " ")
-					fmt.Fprintln(write, sgs.ID, "\t|\t", sgs.Name, "\t|\t", rules, "\t|\t", sgs.Description, "\t")
-					break
-				}
-			}
+func compileOutput(fn func([]secGroup) [][]string, sgList []secGroup) {
+	var data = fn(sgList)
+	switch *outputPtr {
+	case "table":
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"ID", "Name", "Rule", "Description"})
+		for _, val := range data {
+			table.Append(val)
 		}
-		write.Flush()
-	} else if *outputPtr == "json" {
-		var out output
-		for _, sgs := range sgList {
-			for _, perms := range sgs.Permissions {
-				if match.MatchString(perms.GoString()) {
-					rules := re.ReplaceAllString(perms.GoString(), " ")
-					info := sgInfo{sgs.ID, sgs.Name, rules, sgs.Description}
-					out = append(out, info)
-					break
-				}
-			}
+		table.Render()
+	case "json":
+		var jRaw []map[string]string
+		for _, val := range data {
+			element := make(map[string]string)
+			element["ID"] = val[0]
+			element["Name"] = val[1]
+			element["Rule"] = val[2]
+			element["Description"] = val[3]
+			jRaw = append(jRaw, element)
 		}
-		jsonOut, err := json.Marshal(out)
+		jsonOut, err := json.Marshal(jRaw)
 		if err != nil {
 			log.Fatal("Unable to create JSON output.")
 		}
 		fmt.Println(string(jsonOut))
-	} else if *outputPtr == "text" {
-		for _, sgs := range sgList {
-			for _, perms := range sgs.Permissions {
-				if match.MatchString(perms.GoString()) {
-					rules := re.ReplaceAllString(perms.GoString(), " ")
-					fmt.Println("   GroupId\t|\t     Name\t|\t       Rule\t|\t       Description\t")
-					fmt.Println(sgs.ID, sgs.Name, rules, sgs.Description)
-					break
-				}
-			}
+	case "text":
+		for _, v := range data {
+			fmt.Println("\t ID, \t", "\t Name, \t,", "\t Rule, \t", "\t Description \t")
+			fmt.Println(strings.Join(v, ", "))
 		}
-
-	} else {
+	default:
 		log.Fatal("Only table, json, and text outputs are supported for now.")
 	}
+
 }
 
 func main() {
@@ -151,5 +144,5 @@ func main() {
 		Egress:  *egressPtr,
 	}
 	sgList := getSecurityGroups(connParams)
-	compileOutput(sgList)
+	compileOutput(searchSg, sgList)
 }
