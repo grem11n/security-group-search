@@ -15,3 +15,4 @@ I use [Go Modules](https://github.com/golang/go/wiki/Modules) to manage dependen
 * ```-section``` Which section of AWS credentials to use (default "default")
 * ```-ingress``` Set what are you looking for in ingress rules. Could be regexp
 * ```-egress```  Search in egress rules
+* ```-output```  Set output format. `table`, `json`, and `text` formats are supported for now (default "`table`")

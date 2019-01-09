@@ -1,17 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
-	"text/tabwriter"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/olekukonko/tablewriter"
 )
 
 type secGroup struct {
@@ -34,6 +36,7 @@ var (
 	regionPtr  = flag.String("region", "us-east-1", "Defines region")
 	ingressPtr = flag.String("ingress", "", "Specify ingress to find")
 	egressPtr  = flag.Bool("egress", false, "Search Egress rules. Search in Ingress by default")
+	outputPtr  = flag.String("output", "table", "Set output format")
 )
 
 func getSecurityGroups(connParams connParams) []secGroup {
@@ -76,9 +79,61 @@ func getSecurityGroups(connParams connParams) []secGroup {
 	return sgList
 }
 
+func searchSg(sgList []secGroup) [][]string {
+	var match = regexp.MustCompile(*ingressPtr)
+	var re = regexp.MustCompile(`\r?\n|\t+|\s+`)
+	var out [][]string
+	for _, sgs := range sgList {
+		for _, perms := range sgs.Permissions {
+			if match.MatchString(perms.GoString()) {
+				rules := re.ReplaceAllString(perms.GoString(), " ")
+				info := []string{sgs.ID, sgs.Name, rules, sgs.Description}
+				out = append(out, info)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func compileOutput(fn func([]secGroup) [][]string, sgList []secGroup) {
+	var data = fn(sgList)
+	switch *outputPtr {
+	case "table":
+		table := tablewriter.NewWriter(os.Stdout)
+		table.SetHeader([]string{"ID", "Name", "Rule", "Description"})
+		for _, val := range data {
+			table.Append(val)
+		}
+		table.Render()
+	case "json":
+		var jRaw []map[string]string
+		for _, val := range data {
+			element := make(map[string]string)
+			element["ID"] = val[0]
+			element["Name"] = val[1]
+			element["Rule"] = val[2]
+			element["Description"] = val[3]
+			jRaw = append(jRaw, element)
+		}
+		jsonOut, err := json.Marshal(jRaw)
+		if err != nil {
+			log.Fatal("Unable to create JSON output.")
+		}
+		fmt.Println(string(jsonOut))
+	case "text":
+		for _, v := range data {
+			fmt.Println("\t ID, \t", "\t Name, \t,", "\t Rule, \t", "\t Description \t")
+			fmt.Println(strings.Join(v, ", "))
+		}
+	default:
+		log.Fatal("Only table, json, and text outputs are supported for now.")
+	}
+
+}
+
 func main() {
 	flag.Parse()
-	var match = regexp.MustCompile(*ingressPtr)
 	if *ingressPtr == "" {
 		log.Fatal("No search ingress specified")
 	}
@@ -89,17 +144,5 @@ func main() {
 		Egress:  *egressPtr,
 	}
 	sgList := getSecurityGroups(connParams)
-	write := new(tabwriter.Writer)
-	write.Init(os.Stdout, 0, 8, 0, '\t', 0)
-	fmt.Fprintln(write, "   GroupId\t|\t     Name\t|\t       Description\t")
-
-	for _, sgs := range sgList {
-		for _, perms := range sgs.Permissions {
-			if match.MatchString(perms.GoString()) {
-				fmt.Fprintln(write, sgs.ID, "\t|\t", sgs.Name, "\t|\t", sgs.Description, "\t")
-				break
-			}
-		}
-	}
-	write.Flush()
+	compileOutput(searchSg, sgList)
 }
