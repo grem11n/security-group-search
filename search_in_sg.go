@@ -102,9 +102,9 @@ func compileOutput(fn func([]secGroup) [][]string, sgList []secGroup) {
 	case "table":
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"ID", "Name", "Rule", "Description"})
-		for _, val := range data {
-			table.Append(val)
-		}
+		table.SetAutoMergeCells(true)
+		table.SetRowLine(true)
+		table.AppendBulk(data)
 		table.Render()
 	case "json":
 		var jRaw []map[string]string
